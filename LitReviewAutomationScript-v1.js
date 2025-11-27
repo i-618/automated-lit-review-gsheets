@@ -5,29 +5,19 @@
 function automatedLiteratureReviewRunner() {
 
   const SHEET_NAME = "Sheet1"; 
-  const SEARCH_KEYWORD = 'LLM Safety'; // Key words to search for 
+  const SEARCH_KEYWORD = '"LLM + (Safety | Jailbreak)"'; // Key words to search for 
   const OPEN_ACCESS = true; // Open Access papers on Arxiv and other sites
   const LIMIT_PER_RUN = 15; // Number of rows to add per run
-  const PUBLISHED_PAST_MONTHS = 10; // Papers published from past n months
 
 
 
-
-  const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk";
+  const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search";
   // Docs:- https://api.semanticscholar.org/api-docs/graph
   // Query parameters (Refer Docs for advanced usage)
-
-  const today = new Date();
-  const currentMonth = (today.getMonth() + 1).toString().padStart(2, '0'); 
-  today.setMonth(today.getMonth() - PUBLISHED_PAST_MONTHS); 
-  const year = today.getFullYear();
-  const month = (today.getMonth() + 1).toString().padStart(2, '0');
-
   const params = {
     query: SEARCH_KEYWORD,
-    fields: "title,abstract,publicationDate,openAccessPdf,citationCount,referenceCount,externalIds,url,authors",
+    fields: "title,tldr,publicationDate,openAccessPdf,citationCount,referenceCount,externalIds,url,authors",
     sort: "publicationDate:desc",
-    publicationDateOrYear:`${year}-${month}:${year}-${currentMonth}:`,
     limit: LIMIT_PER_RUN,
   };
 
@@ -50,7 +40,7 @@ function automatedLiteratureReviewRunner() {
 
   // 2. Check for missing headers and CREATE them if missing
   let columnMap = getHeaderColumnMap_(sheet);
-  const required = ["date", "title", "authors", "abstract", "link"]; // keys must match lowercase
+  const required = ["date", "title", "authors", "tldr", "link"]; // keys must match lowercase
   const missing = required.filter(h => !(h in columnMap));
   
   if (missing.length) {
@@ -110,14 +100,12 @@ function automatedLiteratureReviewRunner() {
     Logger.log("JSON parse error: " + e.message);
     return;
   }
+
   if (!payload || !Array.isArray(payload.data)) {
     Logger.log("Unexpected response shape (no data array).");
     return;
   }
   Logger.log("API Response items count: " + payload.data.length)
-
-  // console.log(payload)
-
 
   // Read existing links for dedupe
   const lastRow = sheet.getLastRow();
@@ -144,8 +132,8 @@ function automatedLiteratureReviewRunner() {
       const pdfUrl = paper.openAccessPdf && paper.openAccessPdf.url ? paper.openAccessPdf.url : "";
       const canonicalUrl = paper.url || ""; // provided by Graph API
       
-      // 3. SAFETY FIX: Check if paper.abstract exists before accessing .text
-      const abstractText = paper.abstract;
+      // 3. SAFETY FIX: Check if paper.tldr exists before accessing .text
+      const tldrText = (paper.tldr && paper.tldr.text) ? paper.tldr.text : "";
       const link = (pdfUrl || canonicalUrl || "").toString().trim();
 
       // Authors: join names if present
@@ -178,7 +166,7 @@ function automatedLiteratureReviewRunner() {
       if (columnMap.title) rowValues[columnMap.title - 1] = title;
       if (columnMap.authors) rowValues[columnMap.authors - 1] = authors;
       if (columnMap.link) rowValues[columnMap.link - 1] = link;
-      if (columnMap.abstract) rowValues[columnMap.abstract - 1] = abstractText;
+      if (columnMap.tldr) rowValues[columnMap.tldr - 1] = tldrText;
 
       newRows.push(rowValues);
     } catch (e) {

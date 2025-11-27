@@ -18,12 +18,42 @@ Setup the Google App Scripts by navigating from the Google Sheet top Menu Extens
 ### Step 3
 Modify the `SEARCH_KEYWORD` variable in the script to your topic of interest. For example: 
 ```javascript
-  const SEARCH_KEYWORD = '"LLM + (Safety | Jailbreak)"';
+  // Simple Default Match
+  // Matches papers that contain the terms "LLM" and "safety" anywhere in the text (default AND behavior).
+  const SEARCH_KEYWORD = 'LLM Safety';
 
 ```
+
 Modify other parameters that you feel comfortable with. Save the script.
 
 ![App Script Editor](images/add-app-script.png)
+
+A more complex query can be:
+```javascript
+
+  // Example with Exact Phrase OR Logic
+  // Matches papers containing the exact phrase "LLM safety" OR the exact phrase "AI alignment".
+  const query2 = '"LLM safety" | "AI alignment"';
+
+  // Example with Prefix Matching, Precedence, and Negation
+  // Matches papers containing the exact phrase "LLM safety" AND terms starting with "toxic" (e.g., toxicity, toxic), 
+  // but excludes papers containing the word "reinforcement".
+  const query3 = '"LLM safety" + (toxic*) -reinforcement';
+
+  // Example with Proximity Search with Fuzziness
+  // Matches papers where "LLM" and "safety" appear within 5 words of each other (e.g., "safety issues in LLM"), 
+  // AND contains a fuzzy match for "attack" (matches "attack", "attacks", "attak").
+  const query4 = '"LLM safety"~5 + attack~';
+
+  // Example with Complex Combination (Nested Groups, Phrase Proximity, Prefix, and Negation)
+  // Matches papers that:
+  // 1. Contain "LLM" and "safety" within 3 words OR the exact phrase "large language model security".
+  // 2. AND contain terms starting with "jailbreak" OR "inject" (e.g., injection).
+  // 3. AND strictly exclude the term "image" (to focus on text-only modalities).
+  const query5 = '("LLM safety"~3 | "large language model security") + (jailbreak* | inject*) -image';
+
+```
+
 
 ### Step 4
 Setup a time based trigger to run the script periodically. In the App Script Editor, navigate to Triggers (clock icon on left sidebar) -> Add Trigger (bottom right corner) -> Select `automatedLiteratureReviewRunner` function, select "Time-driven" event source, and choose your desired frequency (I prefer to trigger the script each time I open the Google Sheet, So that I actually read the papers and the list dont just pile up).
