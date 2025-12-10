@@ -124,7 +124,7 @@ function automatedLiteratureReviewRunner() {
 
   // Prepare rows
   const newRows = [];
-  for (const paper of payload.data.slice(0, LIMIT_PER_RUN)) {
+  for (const paper of payload.data) {
     try {
       const title = (paper.title || "").toString().trim();
       const publicationDate = paper.publicationDate || "";
@@ -169,6 +169,9 @@ function automatedLiteratureReviewRunner() {
       if (columnMap.tldr) rowValues[columnMap.tldr - 1] = tldrText;
 
       newRows.push(rowValues);
+      if(newRows.length >= params.limit){
+        break;
+      }
     } catch (e) {
       Logger.log("Error processing a paper item: " + e.message);
     }

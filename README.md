@@ -66,6 +66,12 @@ Thats it! You are all setup. You can also run the script manually from the App S
 
 ![Google Sheet with fetched papers](images/automated-lit-review.png)
 
+## Tips to get more papers from the script
+- Increase the `LIMIT_PER_RUN` variable in the script to fetch more papers per run.
+- Modify the `SEARCH_KEYWORD` variable to a broader topic to get more papers.
+- Modify `OPEN_ACCESS` filter to false in the script to get papers from all sources (but some papers may be behind paywalls).
+- Increase the `PUBLISHED_PAST_MONTHS` variable to fetch papers from a longer time frame.
+
 
 ## Note
 - The Semantic Scholar API has rate limits. If you plan to run the script frequently, consider applying for a API Key.
