@@ -11,9 +11,10 @@ function automatedLiteratureReviewRunner() {
   const PUBLISHED_PAST_MONTHS = 10; // Papers published from past n months
 
   // Use bulk search api for bulk retrieval of basic paper data without search relevance
-  // const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk";
+  const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk";
 
-  const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search";
+  // Use search api for relevant search results
+  // const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search";
   // Docs:- https://api.semanticscholar.org/api-docs/graph
   // Query parameters (Refer Docs for advanced usage)
 
@@ -31,7 +32,16 @@ function automatedLiteratureReviewRunner() {
   Logger.log(`Fetching items after ${year}-${month}`);
   Logger.log("----------------");
 
-  // User-configurable retry controls
+
+  const params = {
+    query: SEARCH_KEYWORD,
+    fields: "title,abstract,publicationDate,openAccessPdf,citationCount,referenceCount,externalIds,url,authors",
+    sort: "publicationDate:desc",
+    publicationDateOrYear:`${year}-${month}:`,
+    limit: 100,
+  };
+
+    // User-configurable retry controls
   const retry_count = 5;          // total attempts including the first
   const backoff_factor = 1.0;     // seconds; delay = backoff_factor * 2^(attempt-1)
 
@@ -72,6 +82,53 @@ function automatedLiteratureReviewRunner() {
 
   Logger.log("Column map: " + JSON.stringify(columnMap));
 
+  // Build query string
+  let qs = Object.keys(params)
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join("&");
+  if(OPEN_ACCESS){
+    qs += "&openAccessPdf"
+  }
+
+  const url = `${API_URL}?${qs}`;
+
+  // console.log(url)
+
+  // Fetch with exponential backoff
+  const res = fetchWithExponentialBackoff_(url, {
+    method: "get",
+    muteHttpExceptions: true,
+    headers: { "Accept": "application/json" }
+  }, retry_count, backoff_factor);
+
+  if (!res) {
+    Logger.log("No response returned after retries.");
+    return;
+  }
+
+  const status = res.getResponseCode();
+  Logger.log("Final HTTP status: " + status);
+  if (status < 200 || status >= 300) {
+    Logger.log("Aborting: non-2xx after retries. Body: " + res.getContentText());
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(res.getContentText());
+  } catch (e) {
+    Logger.log("JSON parse error: " + e.message);
+    return;
+  }
+  if (!payload || !Array.isArray(payload.data)) {
+    Logger.log("Unexpected response shape (no data array).");
+    return;
+  }
+  Logger.log("API Response items count: " + payload.data.length + " Out of " + payload.total)
+
+  // console.log(payload)
+
+
   // Read existing links for dedupe
   const lastRow = sheet.getLastRow();
   let existingTitles = [];
@@ -89,90 +146,26 @@ function automatedLiteratureReviewRunner() {
 
   // Prepare rows
   const newRows = [];
-
-  // =======================
-  // [PAGINATION] START
-  // =======================
-  let offset = 0;
-
-  while (newRows.length < LIMIT_PER_RUN) {
-
-    const params = {
-      query: SEARCH_KEYWORD,
-      fields: "title,abstract,publicationDate,openAccessPdf,citationCount,referenceCount,externalIds,url,authors",
-      sort: "publicationDate:desc",
-      publicationDateOrYear:`${year}-${month}:`,
-      limit: 100,
-      offset: offset // [PAGINATION]
-    };
-
-    // Build query string
-    let qs = Object.keys(params)
-      .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
-      .join("&");
-    if (OPEN_ACCESS) {
-      qs += "&openAccessPdf";
-    }
-
-    const url = `${API_URL}?${qs}`;
-    Logger.log("Fetching with offset = " + offset); // [PAGINATION]
-
-    // Fetch with exponential backoff
-    const res = fetchWithExponentialBackoff_(url, {
-      method: "get",
-      muteHttpExceptions: true,
-      headers: { "Accept": "application/json" }
-    }, retry_count, backoff_factor);
-
-    if (!res) {
-      Logger.log("No response returned after retries.");
-      break;
-    }
-
-    const status = res.getResponseCode();
-    Logger.log("HTTP status: " + status);
-    if (status < 200 || status >= 300) {
-      Logger.log("Aborting: non-2xx after retries. Body: " + res.getContentText());
-      break;
-    }
-
-    let payload;
+  for (const paper of payload.data) {
     try {
-      payload = JSON.parse(res.getContentText());
-    } catch (e) {
-      Logger.log("JSON parse error: " + e.message);
-      break;
-    }
-
-    if (!payload || !Array.isArray(payload.data) || payload.data.length === 0) {
-      Logger.log("No more data returned. Stopping pagination.");
-      break;
-    }
-
-    Logger.log("API Response items count: " + payload.data.length + " Out of " + payload.total);
-
-    for (const paper of payload.data) {
-      if (newRows.length >= LIMIT_PER_RUN) break;
-
-      try {
-        const title = (paper.title || "").toString().trim();
-        const publicationDate = paper.publicationDate || "";
+      const title = (paper.title || "").toString().trim();
+      const publicationDate = paper.publicationDate || "";
       // Prefer open access PDF; fall back to canonical paper URL if available
-        const pdfUrl = paper.openAccessPdf && paper.openAccessPdf.url ? paper.openAccessPdf.url : "";
+      const pdfUrl = paper.openAccessPdf && paper.openAccessPdf.url ? paper.openAccessPdf.url : "";
       const canonicalUrl = paper.url || ""; // provided by Graph API
       
       // 3. SAFETY FIX: Check if paper.abstract exists before accessing .text
       const abstractText = paper.abstract;
-        const link = (pdfUrl || canonicalUrl || "").toString().trim();
+      const link = (pdfUrl || canonicalUrl || "").toString().trim();
 
       // Authors: join names if present
-        let authors = "";
-        if (Array.isArray(paper.authors) && paper.authors.length) {
-          authors = paper.authors
-            .map(a => a && a.name ? a.name : "")
-            .filter(Boolean)
-            .join(", ");
-        }
+      let authors = "";
+      if (Array.isArray(paper.authors) && paper.authors.length) {
+        authors = paper.authors
+          .map(a => a && a.name ? a.name : "")
+          .filter(Boolean)
+          .join(", ");
+      }
 
       if (!title) {
         Logger.log("Skipping: missing title for paperId=" + (paper.paperId || ""));
@@ -185,34 +178,26 @@ function automatedLiteratureReviewRunner() {
       }
 
       // Build row by header map
-        const rowValues = [];
+      const rowValues = [];
       // Determine how wide the row needs to be based on existing columns
-        const maxCol = Math.max(...Object.values(columnMap));
+      const maxCol = Math.max(...Object.values(columnMap));
       
-        for (let c = 1; c <= maxCol; c++) rowValues.push("");
+      for (let c = 1; c <= maxCol; c++) rowValues.push("");
 
       if (columnMap.date) rowValues[columnMap.date - 1] = publicationDate || "";
-        if (columnMap.title) rowValues[columnMap.title - 1] = title;
-        if (columnMap.authors) rowValues[columnMap.authors - 1] = authors;
-        if (columnMap.link) rowValues[columnMap.link - 1] = link;
-        if (columnMap.abstract) rowValues[columnMap.abstract - 1] = abstractText;
+      if (columnMap.title) rowValues[columnMap.title - 1] = title;
+      if (columnMap.authors) rowValues[columnMap.authors - 1] = authors;
+      if (columnMap.link) rowValues[columnMap.link - 1] = link;
+      if (columnMap.abstract) rowValues[columnMap.abstract - 1] = abstractText;
 
-        newRows.push(rowValues);
-      } catch (e) {
-        Logger.log("Error processing a paper item: " + e.message);
+      newRows.push(rowValues);
+      if(newRows.length >= LIMIT_PER_RUN){
+        break;
       }
-    }
-
-    offset += 100; // [PAGINATION]
-
-    if (payload.data.length < 100) {
-      Logger.log("Last page reached.");
-      break;
+    } catch (e) {
+      Logger.log("Error processing a paper item: " + e.message);
     }
   }
-  // =======================
-  // [PAGINATION] END
-  // =======================
 
   if (!newRows.length) {
     Logger.log("No new rows to append.");
