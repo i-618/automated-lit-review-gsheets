@@ -7,7 +7,7 @@ function automatedLiteratureReviewRunner() {
   const SHEET_NAME = "Sheet1"; 
   const SEARCH_KEYWORD = 'LLM Safety'; // Key words to search for 
   const OPEN_ACCESS = false; // Open Access papers on Arxiv and other sites
-  const LIMIT_PER_RUN = 15; // Number of rows to add per run
+  const LIMIT_PER_RUN = 5; // Number of rows to add per run
   const PUBLISHED_PAST_MONTHS = 10; // Papers published from past n months
 
   // Use bulk search api for bulk retrieval of basic paper data without search relevance
