@@ -6,29 +6,38 @@ function automatedLiteratureReviewRunner() {
 
   const SHEET_NAME = "Sheet1"; 
   const SEARCH_KEYWORD = 'LLM Safety'; // Key words to search for 
-  const OPEN_ACCESS = true; // Open Access papers on Arxiv and other sites
+  const OPEN_ACCESS = false; // Open Access papers on Arxiv and other sites
   const LIMIT_PER_RUN = 15; // Number of rows to add per run
   const PUBLISHED_PAST_MONTHS = 10; // Papers published from past n months
 
+  // Use bulk search api for bulk retrieval of basic paper data without search relevance
+  // const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk";
 
-
-
-  const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk";
+  const API_URL = "https://api.semanticscholar.org/graph/v1/paper/search";
   // Docs:- https://api.semanticscholar.org/api-docs/graph
   // Query parameters (Refer Docs for advanced usage)
 
   const today = new Date();
-  const currentMonth = (today.getMonth() + 1).toString().padStart(2, '0'); 
-  today.setMonth(today.getMonth() - PUBLISHED_PAST_MONTHS); 
-  const year = today.getFullYear();
-  const month = (today.getMonth() + 1).toString().padStart(2, '0');
+  // current month (unchanged)
+  const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+  // safe copy
+  const pastDate = new Date(today);
+  // avoid end-of-month issues
+  pastDate.setDate(1);
+  pastDate.setMonth(pastDate.getMonth() - PUBLISHED_PAST_MONTHS);
+  const year = pastDate.getFullYear();
+  const month = String(pastDate.getMonth() + 1).padStart(2, '0');
+
+  Logger.log(`Fetching items after ${year}-${month}`);
+  Logger.log("----------------");
+
 
   const params = {
     query: SEARCH_KEYWORD,
     fields: "title,abstract,publicationDate,openAccessPdf,citationCount,referenceCount,externalIds,url,authors",
     sort: "publicationDate:desc",
-    publicationDateOrYear:`${year}-${month}:${year}-${currentMonth}:`,
-    limit: LIMIT_PER_RUN,
+    publicationDateOrYear:`${year}-${month}:`,
+    limit: 100,
   };
 
     // User-configurable retry controls
@@ -114,7 +123,7 @@ function automatedLiteratureReviewRunner() {
     Logger.log("Unexpected response shape (no data array).");
     return;
   }
-  Logger.log("API Response items count: " + payload.data.length)
+  Logger.log("API Response items count: " + payload.data.length + " Out of " + payload.total)
 
   // console.log(payload)
 
@@ -181,7 +190,7 @@ function automatedLiteratureReviewRunner() {
       if (columnMap.abstract) rowValues[columnMap.abstract - 1] = abstractText;
 
       newRows.push(rowValues);
-      if(newRows.length >= params.limit){
+      if(newRows.length >= LIMIT_PER_RUN){
         break;
       }
     } catch (e) {
